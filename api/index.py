@@ -1,8 +1,10 @@
 import sys
 import os
 
-# Ajout du dossier racine au sys.path pour permettre l'importation du dossier backend
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+# Ajout de la racine et du dossier backend au sys.path
+root_dir = os.path.join(os.path.dirname(__file__), '..')
+sys.path.append(root_dir)
+sys.path.append(os.path.join(root_dir, 'backend'))
 
 from backend.app import create_app
 
