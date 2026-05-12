@@ -59,8 +59,8 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     """Configuration production"""
     DEBUG = False
-    SECRET_KEY = os.environ.get('SECRET_KEY')
-    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'prod-fallback-secret-key-123'
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'prod-fallback-jwt-key-456'
     UPLOAD_FOLDER = '/tmp'
 
 

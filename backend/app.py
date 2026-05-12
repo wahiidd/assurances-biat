@@ -85,7 +85,10 @@ def create_app(config_name: str = None) -> Flask:
     try:
         with app.app_context():
             # Importer tous les modèles pour que SQLAlchemy les enregistre
-            from models import User, Invitation, CsvUpload, AuditLog  # noqa
+            from .models.user import User
+            from .models.invitation import Invitation
+            from .models.csv_upload import CsvUpload
+            from .models.audit_log import AuditLog
             db.create_all()
     except Exception as e:
         app.logger.error(f"Erreur lors de la création des tables au démarrage : {e}")
