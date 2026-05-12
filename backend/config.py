@@ -15,9 +15,14 @@ class Config:
 
     # PostgreSQL
     SQLALCHEMY_DATABASE_URI = (
-        os.environ.get('DATABASE_URL')
-        or 'postgresql://wahid:wahid@localhost:5432/AssurancesBiatDB'
+        os.environ.get('POSTGRES_URL') or
+        os.environ.get('DATABASE_URL') or
+        'postgresql://wahid:wahid@localhost:5432/AssurancesBiatDB'
     )
+    # Fix for SQLAlchemy 1.4+ which requires 'postgresql://' instead of 'postgres://'
+    if SQLALCHEMY_DATABASE_URI and SQLALCHEMY_DATABASE_URI.startswith('postgres://'):
+        SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI.replace('postgres://', 'postgresql://', 1)
+
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,
