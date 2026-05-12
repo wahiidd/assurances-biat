@@ -41,7 +41,10 @@ export async function authFetch(endpoint: string, options: RequestInit = {}): Pr
 
   if (token) headers["Authorization"] = `Bearer ${token}`
 
-  return fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers })
+  const finalUrl = `${API_BASE_URL}${endpoint}`
+  console.log(`[API Call] ${options.method || 'GET'} ${finalUrl}`)
+
+  return fetch(finalUrl, { ...options, headers })
 }
 
 // ── Appels API ────────────────────────────────────────────────────────────────
