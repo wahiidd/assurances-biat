@@ -29,7 +29,7 @@ function getToken(): string {
 async function apiFetch(path: string, opts: RequestInit = {}) {
   const token = getToken()
   // path can be relative (/ml/run) or start with /api — normalise
-  const url = path.startsWith("/api") ? `http://localhost:5000${path}` : `${API_BASE}${path}`
+  const url = path.startsWith("/api") ? `${API_BASE.replace("/api", "")}${path}` : `${API_BASE}${path}`
   const res = await fetch(url, {
     ...opts,
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(opts.headers || {}) },

@@ -4,7 +4,6 @@ import { Brain, Play, RefreshCw, CheckCircle, Shield, BarChart2, FileText, Trend
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts"
 import { MetricCard, ModelTable, ConfusionMatrix, RocCurves, MetricComparisonChart, ScoreDistributionChart, COLORS_MODEL, RISK_COLORS, TIP, apiFetch } from "./MLHelpers"
 
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export function MLSection() {

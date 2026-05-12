@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import { useAuth, authFetch, type User } from "@/lib/auth-context"
+import { useAuth, authFetch, API_BASE_URL, type User } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -261,7 +261,7 @@ export default function AdminPage() {
 
     try {
       const token = localStorage.getItem("pfe_access_token")
-      const res   = await fetch("http://localhost:5000/api/admin/csv/upload", {
+      const res   = await fetch(`${API_BASE_URL}/admin/csv/upload`, {
         method:  "POST",
         headers: { Authorization: `Bearer ${token}` },
         body:    formData,
