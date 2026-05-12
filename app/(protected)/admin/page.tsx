@@ -249,9 +249,6 @@ export default function AdminPage() {
     }
   }
 
-    }
-  }
-
   const handleCsvUpload = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!csvFile) return
