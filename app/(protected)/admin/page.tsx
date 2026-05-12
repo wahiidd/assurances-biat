@@ -256,16 +256,44 @@ export default function AdminPage() {
     setCsvError("")
     setCsvSuccess("")
 
-    const formData = new FormData()
-    formData.append("file", csvFile)
-
     try {
       const token = localStorage.getItem("pfe_access_token")
-      const res   = await fetch(`${API_BASE_URL}/admin/csv/upload`, {
+      let payload: any = null
+      let isJson = false
+
+      // Si le fichier est gros (> 4 Mo), on utilise Vercel Blob
+      if (csvFile.size > 4 * 1024 * 1024) {
+        setCsvSuccess("Téléchargement vers le stockage sécurisé (Vercel Blob) en cours...")
+        
+        const uploadResponse = await fetch(`/api/upload?filename=${encodeURIComponent(csvFile.name)}`, {
+          method: "POST",
+          body: csvFile,
+        })
+
+        if (!uploadResponse.ok) {
+          throw new Error("Échec de l'upload vers Vercel Blob")
+        }
+
+        const blob = await uploadResponse.json()
+        payload = JSON.stringify({ file_url: blob.url })
+        isJson = true
+        setCsvSuccess("Fichier stocké. Traitement par le serveur BIAT...")
+      } else {
+        // Pour les petits fichiers, on garde l'upload direct (plus rapide)
+        const formData = new FormData()
+        formData.append("file", csvFile)
+        payload = formData
+      }
+
+      const res = await fetch(`${API_BASE_URL}/admin/csv/upload`, {
         method:  "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body:    formData,
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          ...(isJson ? { "Content-Type": "application/json" } : {})
+        },
+        body: payload,
       })
+      
       const data = await res.json()
 
       if (res.ok) {
@@ -278,8 +306,8 @@ export default function AdminPage() {
       } else {
         setCsvError(data.error || "Erreur lors du traitement")
       }
-    } catch {
-      setCsvError("Erreur de connexion au serveur")
+    } catch (err) {
+      setCsvError(err instanceof Error ? err.message : "Erreur de connexion au serveur")
     } finally {
       setCsvLoading(false)
     }

@@ -6,6 +6,7 @@ Les fonctions retournent des tuples (dict, status_code) — aucune dépendance F
 """
 import os
 import uuid
+import requests
 from datetime import datetime, timedelta
 
 from flask import current_app
@@ -245,15 +246,17 @@ def list_invitations() -> tuple:
 
 # ==================== Upload CSV ====================
 
-def upload_csv(admin_id: str, file, upload_folder: str, ip: str) -> tuple:
-    """Upload et traitement synchrone d'un fichier CSV. Retourne (dict, status_code)."""
+def upload_csv(admin_id: str, file=None, upload_folder: str = "", ip: str = "", file_url: str = None) -> tuple:
+    """Upload et traitement synchrone d'un fichier CSV. Supporte upload direct ou URL (Vercel Blob)."""
     file_uuid = str(uuid.uuid4())
-    safe_name = f"{file_uuid}_{file.filename}"
+    original_filename = file.filename if file else file_url.split('/')[-1] if file_url else "unknown.csv"
+    
+    safe_name = f"{file_uuid}_{original_filename}"
     filepath  = os.path.join(upload_folder, safe_name)
 
     csv_upload = CsvUpload(
         uploaded_by=admin_id,
-        filename=file.filename,
+        filename=original_filename,
         filepath=filepath,
         status='processing',
     )
@@ -263,14 +266,27 @@ def upload_csv(admin_id: str, file, upload_folder: str, ip: str) -> tuple:
         return {'error': "Erreur lors de la création de l'enregistrement"}, 500
 
     try:
-        file.save(filepath)
-    except Exception:
+        if file:
+            # Cas 1 : Upload direct (fichiers < 4.5MB)
+            file.save(filepath)
+        elif file_url:
+            # Cas 2 : Téléchargement depuis Vercel Blob (fichiers volumineux)
+            response = requests.get(file_url, stream=True)
+            response.raise_for_status()
+            with open(filepath, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        else:
+            return {'error': 'Aucun fichier ou URL fourni'}, 400
+            
+    except Exception as e:
         csv_upload.status    = 'error'
-        csv_upload.error_msg = 'Erreur lors de la sauvegarde du fichier'
+        csv_upload.error_msg = f'Erreur lors de la récupération : {str(e)}'
         safe_commit()
-        return {'error': 'Erreur lors de la sauvegarde du fichier'}, 500
+        return {'error': f'Erreur lors de la récupération : {str(e)}'}, 500
 
     try:
+        # On utilise encoding='replace' pour éviter les erreurs sur les gros fichiers mal formés
         with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
             count = sum(1 for _ in f)
         nb_lignes = max(0, count - 1)  # -1 pour l'en-tête
@@ -282,7 +298,7 @@ def upload_csv(admin_id: str, file, upload_folder: str, ip: str) -> tuple:
             action='UPLOAD_CSV',
             user_id=admin_id,
             ip_address=ip,
-            metadata={'filename': file.filename, 'nb_lignes': nb_lignes, 'status': 'done'},
+            metadata={'filename': original_filename, 'nb_lignes': nb_lignes, 'status': 'done', 'method': 'blob' if file_url else 'direct'},
         )
         safe_commit()
 
@@ -293,7 +309,7 @@ def upload_csv(admin_id: str, file, upload_folder: str, ip: str) -> tuple:
             action='UPLOAD_CSV',
             user_id=admin_id,
             ip_address=ip,
-            metadata={'filename': file.filename, 'status': 'error', 'error': str(e)[:200]},
+            metadata={'filename': original_filename, 'status': 'error', 'error': str(e)[:200]},
         )
         safe_commit()
 

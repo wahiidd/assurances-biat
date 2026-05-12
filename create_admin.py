@@ -1,68 +1,55 @@
 import os
-import uuid
-from datetime import datetime
-from dotenv import load_dotenv
+import sys
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from flask_bcrypt import Bcrypt
-from sqlalchemy.dialects.postgresql import UUID
 
-# Configuration minimale
-load_dotenv()
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# On ajoute le dossier backend au path pour pouvoir importer les modules
+sys.path.append(os.path.join(os.getcwd(), 'backend'))
 
-db = SQLAlchemy(app)
-bcrypt = Bcrypt(app)
-
-# Modèle simplifié pour l'insertion
-class User(db.Model):
-    __tablename__ = 'users'
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    nom = db.Column(db.String(100), nullable=False)
-    prenom = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(255), nullable=False, unique=True)
-    password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), nullable=False, default='admin')
-    is_active = db.Column(db.Boolean, default=True)
-    mfa_enabled = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+from extensions import db, bcrypt
+from models.user import User
 
 def create_admin():
-    email = "admin@biat.tn"
-    password = "AdminBiat2026!"
+    # On crée une app Flask factice pour avoir le contexte
+    app = Flask(__name__)
+    
+    # Récupération de l'URL de la base de données (Vercel ou Locale)
+    # Si vous voulez cibler Vercel, assurez-vous que DATABASE_URL est bien dans votre terminal
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        # Fallback local par défaut si aucune variable n'est définie
+        database_url = "postgresql://wahid:wahid@localhost:5432/AssurancesBiatDB"
+    
+    # Correction pour SQLAlchemy (postgres:// -> postgresql://)
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+        
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    db.init_app(app)
+    bcrypt.init_app(app)
     
     with app.app_context():
-        # Vérifier si l'user existe déjà
-        existing = User.query.filter_by(email=email).first()
-        if existing:
-            print(f"L'utilisateur {email} existe déjà.")
-            return
-
-        hashed_pw = bcrypt.generate_password_hash(password, rounds=12).decode('utf-8')
-        new_admin = User(
-            nom="ADMIN",
-            prenom="Wahid",
-            email=email,
-            password_hash=hashed_pw,
-            role="admin",
-            is_active=True
-        )
+        email = "admin@biat.tn"
+        user = User.query.filter_by(email=email).first()
         
-        try:
-            db.session.add(new_admin)
-            db.session.commit()
-            print("---------------------------------------------")
-            print("ADMIN CRÉÉ AVEC SUCCÈS !")
-            print(f"Email : {email}")
-            print(f"Mot de passe : {password}")
-            print("---------------------------------------------")
-        except Exception as e:
-            print(f"Erreur : {e}")
+        if user:
+            print(f"L'utilisateur {email} existe déjà. Mise à jour du mot de passe et du rôle...")
+        else:
+            print(f"Création de l'utilisateur {email}...")
+            user = User(email=email, nom="Admin", prenom="BIAT")
+        
+        # On définit le mot de passe avec la méthode Bcrypt de l'app
+        user.set_password("AdminBiat2026!")
+        user.role = "admin"
+        user.is_active = True
+        user.mfa_enabled = False # Bypass MFA comme demandé
+        
+        if not user.id:
+            db.session.add(user)
+            
+        db.session.commit()
+        print("Opération réussie ! Vous pouvez maintenant vous connecter.")
 
 if __name__ == "__main__":
-    if not app.config['SQLALCHEMY_DATABASE_URI']:
-        print("Erreur : La variable DATABASE_URL n'est pas définie.")
-    else:
-        create_admin()
+    create_admin()

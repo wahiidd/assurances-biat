@@ -131,16 +131,21 @@ def list_invitations():
 @admin_bp.route('/csv/upload', methods=['POST'])
 @admin_required
 def upload_csv():
-    if 'file' not in request.files:
-        return jsonify({'error': 'Aucun fichier fourni (champ "file" attendu)'}), 400
+    file_url = None
+    file = None
 
-    file = request.files['file']
-
-    if not file or file.filename == '':
-        return jsonify({'error': 'Nom de fichier vide'}), 400
-
-    if not file.filename.lower().endswith('.csv'):
-        return jsonify({'error': 'Seuls les fichiers CSV (.csv) sont acceptés'}), 400
+    # On vérifie si on reçoit une URL (JSON) ou un fichier (Multipart)
+    if request.is_json:
+        file_url = request.get_json().get('file_url')
+    
+    if not file_url:
+        if 'file' not in request.files:
+            return jsonify({'error': 'Aucun fichier ou URL fourni (champ "file" ou "file_url" attendu)'}), 400
+        file = request.files['file']
+        if not file or file.filename == '':
+            return jsonify({'error': 'Nom de fichier vide'}), 400
+        if not file.filename.lower().endswith('.csv'):
+            return jsonify({'error': 'Seuls les fichiers CSV (.csv) sont acceptés'}), 400
 
     upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
     os.makedirs(upload_folder, exist_ok=True)
@@ -148,6 +153,7 @@ def upload_csv():
     result, status = admin_service.upload_csv(
         admin_id=get_jwt_identity(),
         file=file,
+        file_url=file_url,
         upload_folder=upload_folder,
         ip=get_client_ip(),
     )
