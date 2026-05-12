@@ -1,0 +1,27 @@
+# Frontend bloat
+node_modules
+.next
+out
+build
+
+# Data and large files
+*.csv
+*.joblib
+*.pkl
+backend/uploads/
+uploads/
+
+# Python bloat
+__pycache__
+*.pyc
+.venv
+venv
+env
+.env
+.pytest_cache
+
+# Misc
+.git
+.github
+.vscode
+*.md
