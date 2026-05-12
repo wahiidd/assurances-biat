@@ -1,0 +1,150 @@
+﻿=== CELL 0 ===
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+
+# 1. Chargement du fichier consolid├®
+df_ml = pd.read_csv("Base_Finale_ML_1401_Clean.csv", sep=';', encoding='utf-8-sig')
+
+# 2. Nettoyage des colonnes textuelles (Encodage)
+le = LabelEncoder()
+# On s├®lectionne les colonnes cat├®gorielles (on exclut les num├®riques et les dates)
+cat_cols = ['Type_versement', 'Frequence', 'Ville', 'Agence', 'Beneficiaires']
+
+for col in cat_cols:
+    if col in df_ml.columns:
+        df_ml[col] = le.fit_transform(df_ml[col].astype(str).fillna('Inconnu'))
+
+# 3. S├®paration Features (X) et Cible (y)
+# On retire ID_Police (identifiant unique) et les colonnes de dates brutes si elles existent encore
+X = df_ml.drop(columns=['ID_Police', 'Rachat'], errors='ignore')
+y = df_ml['Rachat']
+
+# 4. Split 80% Train / 20% Test (avec stratification pour garder le m├¬me % de rachats dans les deux)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42, stratify=y)
+
+print(f"Ô£à Fichier charg├® et encod├® !")
+print(f"Taille du jeu d'entra├«nement : {X_train.shape[0]} lignes")
+print(f"Taux de rachat r├®el : {y.mean():.2%}")
+
+=== CELL 1 ===
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+
+# 1. Chargement
+df_ml = pd.read_csv("Base_Finale_ML_1401_Clean.csv", sep=';', encoding='utf-8-sig')
+
+# 2. On supprime les colonnes de texte "brut" (Dates et ID) qui ne servent plus au calcul
+# car nous avons d├®j├á extrait l'Age, l'Anciennete et l'Annee_Effet
+cols_a_supprimer = ['ID_Police', 'Date_Naissance', 'Debut', 'Fin', '├»┬╗┬┐ID_Police']
+df_ml = df_ml.drop(columns=[c for c in cols_a_supprimer if c in df_ml.columns])
+
+# 3. Encodage des colonnes cat├®gorielles
+le = LabelEncoder()
+cat_cols = ['Type_versement', 'Frequence', 'Ville', 'Agence', 'Beneficiaires']
+
+for col in cat_cols:
+    if col in df_ml.columns:
+        df_ml[col] = le.fit_transform(df_ml[col].astype(str).fillna('Inconnu'))
+
+# 4. S├®paration X et y
+X = df_ml.drop(columns=['Rachat'])
+y = df_ml['Rachat']
+
+# 5. Split 80/20
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42, stratify=y)
+
+print("Ô£à Donn├®es nettoy├®es et pr├¬tes pour le ML.")
+print(f"Colonnes utilis├®es pour l'apprentissage : {list(X.columns)}")
+
+=== CELL 2 ===
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(12, 6))
+
+# On force le calcul uniquement sur les colonnes num├®riques
+correlations = df_ml.corr(numeric_only=True)['Rachat'].sort_values(ascending=False)
+
+sns.barplot(x=correlations.values, y=correlations.index, palette='coolwarm')
+plt.title('Corr├®lation des Variables avec le Rachat')
+plt.axvline(x=0, color='black', linestyle='--', linewidth=1)
+plt.show()
+
+print("--- Top Corr├®lations ---")
+print(correlations)
+
+=== CELL 3 ===
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# 1. Entra├«nement
+rf_model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
+rf_model.fit(X_train, y_train)
+y_pred_rf = rf_model.predict(X_test)
+
+# 2. Cr├®ation de la figure (2 colonnes : Matrice et Importance)
+plt.figure(figsize=(16, 6))
+
+# Sous-graphe 1 : Matrice de Confusion
+plt.subplot(1, 2, 1)
+cm_rf = confusion_matrix(y_test, y_pred_rf)
+sns.heatmap(cm_rf, annot=True, fmt='d', cmap='Blues', cbar=False,
+            xticklabels=['Reste (0)', 'Rachat (1)'], 
+            yticklabels=['Reste (0)', 'Rachat (1)'])
+plt.title('Matrice de Confusion : Random Forest')
+plt.ylabel('R├®alit├®')
+plt.xlabel('Pr├®diction')
+
+# Sous-graphe 2 : Importance des variables
+plt.subplot(1, 2, 2)
+rf_importances = pd.Series(rf_model.feature_importances_, index=X_train.columns).sort_values(ascending=True)
+rf_importances.plot(kind='barh', color='skyblue')
+plt.title('Importance des Variables (RF)')
+
+plt.tight_layout()
+plt.show()
+
+print(f"Accuracy RF: {accuracy_score(y_test, y_pred_rf):.2%}")
+
+=== CELL 4 ===
+from xgboost import XGBClassifier
+
+# 1. Entra├«nement
+ratio = (y_train == 0).sum() / (y_train == 1).sum()
+xgb_model = XGBClassifier(n_estimators=100, scale_pos_weight=ratio, random_state=42, eval_metric='logloss')
+xgb_model.fit(X_train, y_train)
+y_pred_xgb = xgb_model.predict(X_test)
+
+# 2. Cr├®ation de la figure
+plt.figure(figsize=(16, 6))
+
+# Sous-graphe 1 : Matrice de Confusion
+plt.subplot(1, 2, 1)
+cm_xgb = confusion_matrix(y_test, y_pred_xgb)
+sns.heatmap(cm_xgb, annot=True, fmt='d', cmap='Oranges', cbar=False,
+            xticklabels=['Reste (0)', 'Rachat (1)'], 
+            yticklabels=['Reste (0)', 'Rachat (1)'])
+plt.title('Matrice de Confusion : XGBoost')
+plt.ylabel('R├®alit├®')
+plt.xlabel('Pr├®diction')
+
+# Sous-graphe 2 : Importance des variables
+plt.subplot(1, 2, 2)
+xgb_importances = pd.Series(xgb_model.feature_importances_, index=X_train.columns).sort_values(ascending=True)
+xgb_importances.plot(kind='barh', color='salmon')
+plt.title('Importance des Variables (XGB)')
+
+plt.tight_layout()
+plt.show()
+
+print(f"Accuracy XGB: {accuracy_score(y_test, y_pred_xgb):.2%}")
+
+=== CELL 6 ===
+
+

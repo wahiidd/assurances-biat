@@ -1,0 +1,385 @@
+﻿=== FULL CELL 3 ===
+# ============================================================
+# CELLULE 4 : CONSTRUCTION DU DATASET ML FINAL
+# Fusion de toutes les features s├®lectionn├®es
+# Export du fichier pr├¬t pour la mod├®lisation
+# ============================================================
+
+import pandas as pd
+import numpy as np
+
+# ============================================================
+# CHARGEMENT
+# ============================================================
+
+base      = pd.read_csv('features_base.csv')
+base['ID_Police'] = base['ID_Police'].astype(str)
+
+emissions = pd.read_csv('features_emissions.csv')
+emissions['ID_Police'] = emissions['ID_Police'].astype(str)
+
+vars_sel  = pd.read_csv('variables_selectionnees.csv')['variable'].tolist()
+
+# ============================================================
+# FUSION COMPL├êTE
+# ============================================================
+
+df = base.merge(emissions, on='ID_Police', how='left')
+
+# Remplir NaN d'├®missions par 0 (contrats sans ├®missions connues)
+cols_emissions = [c for c in emissions.columns if c != 'ID_Police']
+df[cols_emissions] = df[cols_emissions].fillna(0)
+
+print(f"Dataset complet fusionn├® : {df.shape}")
+
+# ============================================================
+# S├ëLECTION DES VARIABLES RETENUES
+# ============================================================
+
+# On garde ID_Police + target + variables s├®lectionn├®es
+cols_finales = ['ID_Police', 'Rachat'] + [v for v in vars_sel if v in df.columns]
+df_ml = df[cols_finales].copy()
+
+print(f"Dataset ML final         : {df_ml.shape}")
+print(f"Variables retenues       : {len(vars_sel)}")
+print(f"Target (Rachat)          : {df_ml['Rachat'].value_counts().to_dict()}")
+print(f"Taux de rachat           : {df_ml['Rachat'].mean()*100:.1f}%")
+print(f"\nValeurs manquantes       : {df_ml.isnull().sum().sum()}")
+print(f"\nColonnes finales :\n{list(df_ml.columns)}")
+
+# ============================================================
+# STATISTIQUES DESCRIPTIVES PAR GROUPE
+# ============================================================
+
+print("\n=== Moyennes par groupe (Rachat 0 vs 1) ===")
+print(df_ml.groupby('Rachat')[vars_sel].mean().round(3).T.to_string())
+
+# ============================================================
+# EXPORT
+# ============================================================
+
+# Dataset ML complet (avec ID_Police pour tra├ºabilit├®)
+df_ml.to_csv('dataset_ml_final.csv', index=False)
+print("\nFichier sauvegard├® : dataset_ml_final.csv")
+
+# Dataset sans ID pour mod├®lisation directe
+df_ml.drop(columns=['ID_Police']).to_csv('dataset_ml_modelisation.csv', index=False)
+print("Fichier sauvegard├® : dataset_ml_modelisation.csv")
+
+print("\n" + "="*55)
+print("DATASET ML PR├èT ÔÇö Prochaine ├®tape : mod├®lisation")
+print("="*55)
+print(f"  Observations : {len(df_ml):,}")
+print(f"  Features     : {len(vars_sel)}")
+print(f"  Target       : Rachat (0 = PM, 1 = Rachat)")
+
+=== FULL CELL 4 ===
+# ============================================================
+# CELLULE 5 : ENTRA├ÄNEMENT ET COMPARAISON DES 3 MOD├êLES
+# Logistic Regression / Random Forest / XGBoost
+# ============================================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import (
+    roc_auc_score, f1_score, accuracy_score, precision_score,
+    recall_score, confusion_matrix, roc_curve, classification_report
+)
+from xgboost import XGBClassifier
+import warnings
+warnings.filterwarnings('ignore')
+
+# ============================================================
+# CHARGEMENT DU DATASET ML
+# ============================================================
+
+df = pd.read_csv('dataset_ml_modelisation.csv')
+
+X = df.drop(columns=['Rachat'])
+y = df['Rachat']
+
+print(f"Dataset : {X.shape[0]:,} observations | {X.shape[1]} features")
+print(f"Taux de rachat : {y.mean()*100:.1f}%")
+
+# ============================================================
+# SPLIT TRAIN / TEST ÔÇö stratifi├® pour respecter l'├®quilibre
+# ============================================================
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+
+print(f"\nTrain : {len(X_train):,} | Test : {len(X_test):,}")
+print(f"Taux rachat train : {y_train.mean()*100:.1f}% | test : {y_test.mean()*100:.1f}%")
+
+# ============================================================
+# NORMALISATION (n├®cessaire pour la R├®gression Logistique)
+# ============================================================
+
+scaler = StandardScaler()
+X_train_sc = scaler.fit_transform(X_train)
+X_test_sc  = scaler.transform(X_test)
+
+# ============================================================
+# D├ëFINITION DES MOD├êLES
+# ============================================================
+
+ratio_classes = (y == 0).sum() / (y == 1).sum()
+
+modeles = {
+    'R├®gression Logistique': LogisticRegression(
+        max_iter=1000,
+        class_weight='balanced',
+        random_state=42
+    ),
+    'Random Forest': RandomForestClassifier(
+        n_estimators=300,
+        max_depth=12,
+        min_samples_leaf=10,
+        class_weight='balanced',
+        random_state=42,
+        n_jobs=-1
+    ),
+    'XGBoost': XGBClassifier(
+        n_estimators=300,
+        max_depth=6,
+        learning_rate=0.05,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        scale_pos_weight=ratio_classes,
+        random_state=42,
+        eval_metric='logloss',
+        verbosity=0
+    ),
+}
+
+# ============================================================
+# ENTRA├ÄNEMENT + ├ëVALUATION
+# ============================================================
+
+resultats = {}
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+for nom, modele in modeles.items():
+    print(f"\n{'='*50}")
+    print(f"Entra├«nement : {nom}")
+    print('='*50)
+
+    # Donn├®es normalis├®es pour LR, brutes pour RF et XGB
+    if nom == 'R├®gression Logistique':
+        Xtr, Xte = X_train_sc, X_test_sc
+    else:
+        Xtr, Xte = X_train, X_test
+
+    # Entra├«nement
+    modele.fit(Xtr, y_train)
+
+    # Pr├®dictions
+    y_pred      = modele.predict(Xte)
+    y_proba     = modele.predict_proba(Xte)[:, 1]
+
+    # M├®triques
+    auc         = roc_auc_score(y_test, y_proba)
+    f1          = f1_score(y_test, y_pred)
+    acc         = accuracy_score(y_test, y_pred)
+    precision   = precision_score(y_test, y_pred)
+    recall      = recall_score(y_test, y_pred)
+    cm          = confusion_matrix(y_test, y_pred)
+
+    # Cross-validation AUC (5 folds)
+    cv_auc = cross_val_score(modele, Xtr, y_train,
+                             cv=cv, scoring='roc_auc', n_jobs=-1)
+
+    resultats[nom] = {
+        'modele'    : modele,
+        'y_pred'    : y_pred,
+        'y_proba'   : y_proba,
+        'auc'       : auc,
+        'f1'        : f1,
+        'accuracy'  : acc,
+        'precision' : precision,
+        'recall'    : recall,
+        'cm'        : cm,
+        'cv_auc_mean': cv_auc.mean(),
+        'cv_auc_std' : cv_auc.std(),
+    }
+
+    print(f"  AUC-ROC        : {auc:.4f}")
+    print(f"  F1-Score       : {f1:.4f}")
+    print(f"  Accuracy       : {acc:.4f}")
+    print(f"  Pr├®cision      : {precision:.4f}")
+    print(f"  Rappel         : {recall:.4f}")
+    print(f"  CV AUC (5-fold): {cv_auc.mean():.4f} ┬▒ {cv_auc.std():.4f}")
+    print(f"\n  Rapport de classification :")
+    print(classification_report(y_test, y_pred,
+          target_names=['PM (0)', 'Rachat (1)'], digits=4))
+
+# ============================================================
+# TABLEAU COMPARATIF
+# ============================================================
+
+print("\n" + "="*65)
+print("TABLEAU COMPARATIF DES MOD├êLES")
+print("="*65)
+compare = pd.DataFrame({
+    nom: {
+        'AUC-ROC'         : f"{r['auc']:.4f}",
+        'F1-Score'        : f"{r['f1']:.4f}",
+        'Accuracy'        : f"{r['accuracy']:.4f}",
+        'Pr├®cision'       : f"{r['precision']:.4f}",
+        'Rappel'          : f"{r['recall']:.4f}",
+        'CV AUC (mean)'   : f"{r['cv_auc_mean']:.4f}",
+        'CV AUC (┬▒std)'   : f"{r['cv_auc_std']:.4f}",
+    }
+    for nom, r in resultats.items()
+}).T
+print(compare.to_string())
+
+# ============================================================
+# VISUALISATION ÔÇö 4 graphiques
+# ============================================================
+
+COLORS = {
+    'R├®gression Logistique' : '#E74C3C',
+    'Random Forest'         : '#2ECC71',
+    'XGBoost'               : '#3498DB',
+}
+
+fig = plt.figure(figsize=(20, 16))
+fig.patch.set_facecolor('#F8F9FA')
+gs_main = gridspec.GridSpec(2, 2, figure=fig, hspace=0.40, wspace=0.35)
+
+# ------------------------------------------------------------------
+# GRAPHIQUE 1 : Courbes ROC
+# ------------------------------------------------------------------
+ax1 = fig.add_subplot(gs_main[0, 0])
+ax1.set_facecolor('#F8F9FA')
+
+ax1.plot([0, 1], [0, 1], 'k--', linewidth=1, label='Al├®atoire (AUC = 0.50)')
+for nom, r in resultats.items():
+    fpr, tpr, _ = roc_curve(y_test, r['y_proba'])
+    ax1.plot(fpr, tpr, color=COLORS[nom], linewidth=2.2,
+             label=f"{nom} (AUC = {r['auc']:.4f})")
+
+ax1.set_xlabel('Taux de Faux Positifs', fontsize=10)
+ax1.set_ylabel('Taux de Vrais Positifs', fontsize=10)
+ax1.set_title('Courbes ROC\ncomparaison des 3 mod├¿les', fontsize=12, fontweight='bold')
+ax1.legend(fontsize=8.5, framealpha=0.9)
+ax1.spines[['top', 'right']].set_visible(False)
+ax1.grid(True, linestyle='--', alpha=0.4)
+
+# ------------------------------------------------------------------
+# GRAPHIQUE 2 : Comparaison des m├®triques (barres group├®es)
+# ------------------------------------------------------------------
+ax2 = fig.add_subplot(gs_main[0, 1])
+ax2.set_facecolor('#F8F9FA')
+
+metriques  = ['AUC-ROC', 'F1-Score', 'Accuracy', 'Pr├®cision', 'Rappel']
+metrique_keys = ['auc', 'f1', 'accuracy', 'precision', 'recall']
+noms       = list(resultats.keys())
+x          = np.arange(len(metriques))
+width      = 0.25
+
+for i, nom in enumerate(noms):
+    vals = [resultats[nom][k] for k in metrique_keys]
+    bars = ax2.bar(x + i * width, vals, width,
+                   color=COLORS[nom], label=nom, edgecolor='white', alpha=0.88)
+    for bar, val in zip(bars, vals):
+        ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.003,
+                 f'{val:.3f}', ha='center', va='bottom', fontsize=7, fontweight='bold')
+
+ax2.set_xticks(x + width)
+ax2.set_xticklabels(metriques, fontsize=9)
+ax2.set_ylim(0, 1.12)
+ax2.set_ylabel('Score', fontsize=10)
+ax2.set_title('Comparaison des m├®triques\npar mod├¿le', fontsize=12, fontweight='bold')
+ax2.legend(fontsize=8.5, framealpha=0.9)
+ax2.spines[['top', 'right']].set_visible(False)
+ax2.yaxis.grid(True, linestyle='--', alpha=0.4)
+ax2.set_axisbelow(True)
+
+# ------------------------------------------------------------------
+# GRAPHIQUE 3 : Matrices de confusion (3 sous-graphes)
+# ------------------------------------------------------------------
+gs_cm = gridspec.GridSpecFromSubplotSpec(1, 3, subplot_spec=gs_main[1, 0],
+                                          wspace=0.4)
+for i, (nom, r) in enumerate(resultats.items()):
+    ax_cm = fig.add_subplot(gs_cm[i])
+    ax_cm.set_facecolor('#F8F9FA')
+    cm = r['cm']
+    im = ax_cm.imshow(cm, interpolation='nearest',
+                      cmap=plt.cm.Blues, aspect='auto')
+
+    total = cm.sum()
+    for row in range(2):
+        for col in range(2):
+            val  = cm[row, col]
+            pct  = val / total * 100
+            color = 'white' if cm[row, col] > cm.max() / 2 else '#2C3E50'
+            ax_cm.text(col, row, f'{val:,}\n({pct:.1f}%)',
+                       ha='center', va='center', fontsize=8,
+                       fontweight='bold', color=color)
+
+    ax_cm.set_xticks([0, 1])
+    ax_cm.set_yticks([0, 1])
+    ax_cm.set_xticklabels(['PM (0)', 'Rachat (1)'], fontsize=7.5)
+    ax_cm.set_yticklabels(['PM (0)', 'Rachat (1)'], fontsize=7.5)
+    ax_cm.set_xlabel('Pr├®dit', fontsize=8)
+    ax_cm.set_ylabel('R├®el', fontsize=8)
+
+    # Nom du mod├¿le abr├®g├®
+    nom_court = nom.replace('R├®gression Logistique', 'Reg. Log.')\
+                   .replace('Random Forest', 'Rand. Forest')
+    ax_cm.set_title(nom_court, fontsize=9, fontweight='bold',
+                    color=COLORS[nom])
+
+# ------------------------------------------------------------------
+# GRAPHIQUE 4 : CV AUC avec intervalle de confiance
+# ------------------------------------------------------------------
+ax4 = fig.add_subplot(gs_main[1, 1])
+ax4.set_facecolor('#F8F9FA')
+
+noms_short = ['Reg.\nLogistique', 'Random\nForest', 'XGBoost']
+cv_means   = [resultats[n]['cv_auc_mean'] for n in noms]
+cv_stds    = [resultats[n]['cv_auc_std']  for n in noms]
+colors_list = [COLORS[n] for n in noms]
+
+bars4 = ax4.bar(noms_short, cv_means, color=colors_list,
+                edgecolor='white', width=0.5, alpha=0.88)
+ax4.errorbar(noms_short, cv_means, yerr=[2*s for s in cv_stds],
+             fmt='none', color='#2C3E50', capsize=8, linewidth=2)
+
+for bar, mean, std in zip(bars4, cv_means, cv_stds):
+    ax4.text(bar.get_x() + bar.get_width()/2, mean + 2*std + 0.005,
+             f'{mean:.4f}\n┬▒{std:.4f}', ha='center', va='bottom',
+             fontsize=9, fontweight='bold')
+
+ax4.axhline(y=0.5, color='#7F8C8D', linestyle='--',
+            linewidth=1.2, label='Baseline al├®atoire')
+ax4.set_ylim(0.4, 1.05)
+ax4.set_ylabel('AUC-ROC moyen (CV 5-fold)', fontsize=10)
+ax4.set_title('Validation crois├®e AUC-ROC\n(barres d\'erreur = ┬▒2¤â)', fontsize=12, fontweight='bold')
+ax4.legend(fontsize=8.5)
+ax4.spines[['top', 'right']].set_visible(False)
+ax4.yaxis.grid(True, linestyle='--', alpha=0.4)
+ax4.set_axisbelow(True)
+
+# ------------------------------------------------------------------
+# TITRE G├ëN├ëRAL
+# ------------------------------------------------------------------
+fig.suptitle('Comparaison des mod├¿les ML ÔÇö Pr├®diction du rachat',
+             fontsize=15, fontweight='bold', color='#2C3E50', y=1.01)
+
+plt.savefig('comparaison_modeles.png', dpi=150, bbox_inches='tight', facecolor='#F8F9FA')
+plt.show()
+print("Graphique sauvegard├® : comparaison_modeles.png")
+

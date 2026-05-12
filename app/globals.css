@@ -1,0 +1,217 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Palette PFE: #acc936, #252324, #e0e1e1, #19542b, #7d847f, #c2d493, #093215 */
+  --background: #e0e1e1;
+  --foreground: #252324;
+  --card: #ffffff;
+  --card-foreground: #252324;
+  --popover: #ffffff;
+  --popover-foreground: #252324;
+  --primary: #19542b;
+  --primary-foreground: #ffffff;
+  --secondary: #c2d493;
+  --secondary-foreground: #252324;
+  --muted: #e0e1e1;
+  --muted-foreground: #7d847f;
+  --accent: #acc936;
+  --accent-foreground: #252324;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #c2d493;
+  --input: #e0e1e1;
+  --ring: #acc936;
+  --chart-1: #acc936;
+  --chart-2: #19542b;
+  --chart-3: #c2d493;
+  --chart-4: #7d847f;
+  --chart-5: #093215;
+  --radius: 0.625rem;
+  --sidebar: #093215;
+  --sidebar-foreground: #e0e1e1;
+  --sidebar-primary: #acc936;
+  --sidebar-primary-foreground: #252324;
+  --sidebar-accent: #19542b;
+  --sidebar-accent-foreground: #e0e1e1;
+  --sidebar-border: #19542b;
+  --sidebar-ring: #acc936;
+}
+
+.dark {
+  /* Palette PFE Dark Mode */
+  --background: #252324;
+  --foreground: #e0e1e1;
+  --card: #093215;
+  --card-foreground: #e0e1e1;
+  --popover: #093215;
+  --popover-foreground: #e0e1e1;
+  --primary: #acc936;
+  --primary-foreground: #252324;
+  --secondary: #19542b;
+  --secondary-foreground: #e0e1e1;
+  --muted: #093215;
+  --muted-foreground: #7d847f;
+  --accent: #c2d493;
+  --accent-foreground: #252324;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #19542b;
+  --input: #093215;
+  --ring: #acc936;
+  --chart-1: #acc936;
+  --chart-2: #c2d493;
+  --chart-3: #19542b;
+  --chart-4: #7d847f;
+  --chart-5: #e0e1e1;
+  --sidebar: #093215;
+  --sidebar-foreground: #e0e1e1;
+  --sidebar-primary: #acc936;
+  --sidebar-primary-foreground: #252324;
+  --sidebar-accent: #19542b;
+  --sidebar-accent-foreground: #e0e1e1;
+  --sidebar-border: #19542b;
+  --sidebar-ring: #acc936;
+}
+
+@theme inline {
+  --font-sans: 'Geist', 'Geist Fallback';
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Dual-range slider: input tracks are transparent, thumbs get pointer-events */
+.yr-thumb {
+  pointer-events: none;
+}
+.yr-thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #093215;
+  border: 3px solid #acc936;
+  box-shadow: 0 1px 4px rgba(9,50,21,0.4);
+  cursor: pointer;
+  pointer-events: all;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.yr-thumb::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 2px 8px rgba(9,50,21,0.5);
+}
+.yr-thumb::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #093215;
+  border: 3px solid #acc936;
+  cursor: pointer;
+  pointer-events: all;
+}
+
+/* ── KPI Card hover ──────────────────────────────────────────────────────── */
+.kpi-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.kpi-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(9,50,21,0.12);
+}
+
+/* ── Chart card hover ────────────────────────────────────────────────────── */
+.chart-card {
+  transition: box-shadow 0.2s ease;
+}
+.chart-card:hover {
+  box-shadow: 0 6px 20px rgba(9,50,21,0.1);
+}
+
+/* ── ML card animations ──────────────────────────────────────────────────── */
+.ml-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  animation: fadeSlideUp 0.4s ease both;
+}
+.ml-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
+}
+
+/* ── Filter card hover ───────────────────────────────────────────────────── */
+.filter-card {
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.filter-card:hover {
+  border-color: #c2d493;
+  box-shadow: 0 2px 8px rgba(9,50,21,0.06);
+}
+
+/* ── Recharts tooltip dark override ─────────────────────────────────────── */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #0f172a !important;
+  border: 1px solid #1e293b !important;
+  border-radius: 10px !important;
+  color: #f8fafc !important;
+}
+

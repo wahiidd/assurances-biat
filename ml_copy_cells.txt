@@ -1,0 +1,574 @@
+﻿=== CELL 0 ===
+# ============================================================
+# CELLULE 1 (V2) : VARIABLES D'├ëMISSIONS AGR├ëG├ëES
+# Corrections :
+#   - Filtre : Rachat >= 2015 + PM avec ├®missions uniquement
+#   - Montants = 0 imput├®s par la m├®diane du contrat
+#   - Ajout variables binaires : hausse (x1.5) et chute (-70%)
+#   - Seuils appliqu├®s sur N-1 vs moyenne historique
+# ============================================================
+
+import pandas as pd
+import numpy as np
+from scipy import stats
+
+# ============================================================
+# ETAPE 1 : CHARGEMENT
+# ============================================================
+
+ec = pd.read_csv('emission_annuelle_complete.csv', sep=None, engine='python')
+ec.columns = ec.columns.str.strip().str.replace('\ufeff', '')
+ec['ID_Police'] = ec['ID_Police'].astype(str)
+ec = ec.sort_values(['ID_Police', 'annee'])
+
+bar = pd.read_csv('Base_annee_rachat.csv', sep=None, engine='python')
+bar.columns = bar.columns.str.strip().str.replace('\ufeff', '')
+bar['ID_Police'] = bar['ID_Police'].astype(str)
+
+print(f"├ëmissions brutes       : {len(ec):,} lignes | {ec['ID_Police'].nunique():,} contrats")
+print(f"Base contrats          : {bar.shape}")
+
+# ============================================================
+# ETAPE 2 : D├ëFINITION DU P├ëRIM├êTRE
+# ============================================================
+
+# Rachat >= 2015 : tous gard├®s (m├¬me sans ├®missions ÔåÆ imput├®s ├á 0 plus tard)
+rachat_ids = set(bar[(bar['Rachat'] == 1) & (bar['ann├®e de rachat'] >= 2015)]['ID_Police'])
+
+# PM : uniquement ceux pr├®sents dans les ├®missions (les autres sont trop vieux)
+emit_ids   = set(ec['ID_Police'])
+pm_ids_ok  = set(bar[bar['Rachat'] == 0]['ID_Police']) & emit_ids
+
+contrats_ok = rachat_ids | pm_ids_ok
+
+print(f"\nRachat >= 2015         : {len(rachat_ids):,} contrats")
+print(f"PM avec ├®missions      : {len(pm_ids_ok):,} contrats")
+print(f"PM exclus (sans ├®miss) : {len(set(bar[bar['Rachat']==0]['ID_Police']) - emit_ids):,} contrats")
+print(f"Total p├®rim├¿tre ML     : {len(contrats_ok):,} contrats")
+
+# Filtrer les ├®missions sur le p├®rim├¿tre
+ec = ec[ec['ID_Police'].isin(contrats_ok)].copy()
+print(f"\n├ëmissions apr├¿s filtre : {len(ec):,} lignes | {ec['ID_Police'].nunique():,} contrats")
+
+# ============================================================
+# ETAPE 3 : IMPUTATION DES MONTANTS = 0
+# par la m├®diane du contrat sur ses autres ann├®es
+# ============================================================
+
+n_zeros_avant = (ec['montant'] == 0).sum()
+
+def imputer_zeros(groupe):
+    mediane_nonzero = groupe[groupe > 0].median()
+    if pd.isna(mediane_nonzero):
+        return groupe  # Contrat avec tous les montants ├á 0 ÔåÆ on laisse
+    return groupe.where(groupe != 0, mediane_nonzero)
+
+ec['montant'] = ec.groupby('ID_Police')['montant'].transform(imputer_zeros)
+
+n_zeros_apres = (ec['montant'] == 0).sum()
+print(f"\nMontants = 0 avant imputation : {n_zeros_avant:,}")
+print(f"Montants = 0 apr├¿s imputation : {n_zeros_apres:,} (cas tout-z├®ro r├®siduels)")
+
+
+=== CELL 1 ===
+# ============================================================
+# CELLULE 2 (V2) : FEATURE ENGINEERING SUR BASE_ANNEE_RACHAT
+# Corrections :
+#   - Suppression de TMP_ANNUITY_TERM
+#   - Filtre : Rachat >= 2015 + PM avec ├®missions uniquement
+#   - Annee_Effet supprim├® (redondant avec Anciennete)
+# ============================================================
+
+import pandas as pd
+import numpy as np
+
+# ============================================================
+# CHARGEMENT
+# ============================================================
+
+bar = pd.read_csv('Base_annee_rachat.csv', sep=None, engine='python')
+bar.columns = bar.columns.str.strip().str.replace('\ufeff', '')
+bar['ID_Police'] = bar['ID_Police'].astype(str)
+
+ec = pd.read_csv('emission_annuelle_complete.csv', sep=None, engine='python')
+ec.columns = ec.columns.str.strip().str.replace('\ufeff', '')
+ec['ID_Police'] = ec['ID_Police'].astype(str)
+emit_ids = set(ec['ID_Police'])
+
+print(f"Base charg├®e : {bar.shape}")
+
+# ============================================================
+# ETAPE 1 : FILTRE SUR LE P├ëRIM├êTRE ML
+# ============================================================
+
+rachat_ok = (bar['Rachat'] == 1) & (bar['ann├®e de rachat'] >= 2015)
+pm_ok     = (bar['Rachat'] == 0) & (bar['ID_Police'].isin(emit_ids))
+
+bar = bar[rachat_ok | pm_ok].copy()
+bar = bar.drop_duplicates(subset='ID_Police')
+
+print(f"Apr├¿s filtre p├®rim├¿tre ML : {len(bar):,} contrats")
+print(f"  Rachat >= 2015 : {rachat_ok.sum():,}")
+print(f"  PM avec ├®miss  : {pm_ok.sum():,}")
+
+# ============================================================
+# ETAPE 2 : SUPPRESSION DES COLONNES NON INFORMATIVES
+# ============================================================
+
+cols_a_supprimer = [
+    'Date_Naissance',    # remplac├®e par Age
+    'Debut',             # remplac├®e par Anciennete
+    'Fin',               # non informative pour ML
+    'Annee_Effet',       # redondant avec Anciennete
+    'TMP_ANNUITY_TERM',  # supprim├® ├á la demande
+    'Ville',             # trop granulaire
+    'Beneficiaires',     # texte libre
+    'ann├®e de rachat',   # info post-├®v├®nement
+]
+
+bar = bar.drop(columns=cols_a_supprimer)
+print(f"\nApr├¿s suppression colonnes : {bar.shape}")
+
+# ============================================================
+# ETAPE 3 : GESTION DES VALEURS MANQUANTES
+# ============================================================
+
+print(f"\nValeurs manquantes avant traitement :\n{bar.isnull().sum()[bar.isnull().sum() > 0]}")
+
+for col in ['Montant_Initial_Versement', 'Montant_Regulier', 'Frequence', 'Code_Postal']:
+    if col in bar.columns:
+        bar[col] = bar[col].fillna(bar[col].median())
+
+for col in ['Type_versement']:
+    if col in bar.columns:
+        bar[col] = bar[col].fillna(bar[col].mode()[0])
+
+bar['Agence'] = bar['Agence'].fillna('Inconnue')
+
+print(f"\nValeurs manquantes apr├¿s traitement : {bar.isnull().sum().sum()}")
+
+# ============================================================
+# ETAPE 4 : ENCODAGE DES VARIABLES CAT├ëGORIELLES
+# ======
+
+=== CELL 2 ===
+# ============================================================
+# CELLULE 3 : S├ëLECTION DES VARIABLES
+# Corr├®lation + Importance Random Forest
+# Seuil : importance >= 0.01 (1%)
+# ============================================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+
+# ============================================================
+# CHARGEMENT ET FUSION
+# ============================================================
+
+base     = pd.read_csv('features_base.csv')
+base['ID_Police'] = base['ID_Police'].astype(str)
+
+emissions = pd.read_csv('features_emissions.csv')
+emissions['ID_Police'] = emissions['ID_Police'].astype(str)
+
+df = base.merge(emissions, on='ID_Police', how='left')
+
+# Remplir NaN d'├®missions (contrats sans aucune ├®mission) par 0
+cols_emissions = [c for c in emissions.columns if c != 'ID_Police']
+df[cols_emissions] = df[cols_emissions].fillna(0)
+
+print(f"Dataset fusionn├® : {df.shape}")
+print(f"Valeurs manquantes : {df.isnull().sum().sum()}")
+
+# ============================================================
+# PREPARATION X / y
+# ============================================================
+
+target   = 'Rachat'
+drop_cols = ['ID_Police', target]
+X = df.drop(columns=drop_cols)
+y = df[target]
+
+print(f"\nFeatures : {X.shape[1]} | Observations : {X.shape[0]:,}")
+print(f"Taux de rachat : {y.mean()*100:.1f}%")
+
+# ============================================================
+# ETAPE 1 : MATRICE DE CORR├ëLATION AVEC LA TARGET
+# ============================================================
+
+corr_target = X.corrwith(y).abs().sort_values(ascending=False)
+print("\n=== Corr├®lation absolue avec Rachat ===")
+print(corr_target.round(4).to_string())
+
+SEUIL_CORR = 0.02  # seuil minimal de corr├®lation avec la target
+vars_corr_ok = corr_target[corr_target >= SEUIL_CORR].index.tolist()
+print(f"\nVariables avec corr├®lation >= {SEUIL_CORR} : {len(vars_corr_ok)}")
+print(vars_corr_ok)
+
+# ============================================================
+# ETAPE 2 : IMPORTANCE RANDOM FOREST
+# ============================================================
+
+rf = RandomForestClassifier(
+    n_estimators=200,
+    max_depth=10,
+    random_state=42,
+    n_jobs=-1,
+    class_weight='balanced'
+)
+rf.fit(X, y)
+
+importances = pd.Series(rf.feature_importances_, index=X.columns)
+importances = importances.sort_values(ascending=False)
+
+print("\n=== Importance Random Forest ===")
+print(importances.round(4).to_string())
+
+SEUIL_IMP = 0.01  # seuil minimal d'importance
+vars_imp_ok = importances[importances >= SEUIL_IMP].index.tolist()
+print(f"\nVariables avec importance >= {SEUIL_IMP} : {len(vars_imp_ok)}")
+print(vars_imp_ok)
+
+# ============================================================
+# ETAPE 3 : S├ëLECTION FINALE ÔÇö UNION DES DEUX CRIT├êRES
+# ============================================================
+
+vars_selectionnees =
+
+=== CELL 3 ===
+# ============================================================
+# CELLULE 4 : CONSTRUCTION DU DATASET ML FINAL
+# Fusion de toutes les features s├®lectionn├®es
+# Export du fichier pr├¬t pour la mod├®lisation
+# ============================================================
+
+import pandas as pd
+import numpy as np
+
+# ============================================================
+# CHARGEMENT
+# ============================================================
+
+base      = pd.read_csv('features_base.csv')
+base['ID_Police'] = base['ID_Police'].astype(str)
+
+emissions = pd.read_csv('features_emissions.csv')
+emissions['ID_Police'] = emissions['ID_Police'].astype(str)
+
+vars_sel  = pd.read_csv('variables_selectionnees.csv')['variable'].tolist()
+
+# ============================================================
+# FUSION COMPL├êTE
+# ============================================================
+
+df = base.merge(emissions, on='ID_Police', how='left')
+
+# Remplir NaN d'├®missions par 0 (contrats sans ├®missions connues)
+cols_emissions = [c for c in emissions.columns if c != 'ID_Police']
+df[cols_emissions] = df[cols_emissions].fillna(0)
+
+print(f"Dataset complet fusionn├® : {df.shape}")
+
+# ============================================================
+# S├ëLECTION DES VARIABLES RETENUES
+# ============================================================
+
+# On garde ID_Police + target + variables s├®lectionn├®es
+cols_finales = ['ID_Police', 'Rachat'] + [v for v in vars_sel if v in df.columns]
+df_ml = df[cols_finales].copy()
+
+print(f"Dataset ML final         : {df_ml.shape}")
+print(f"Variables retenues       : {len(vars_sel)}")
+print(f"Target (Rachat)          : {df_ml['Rachat'].value_counts().to_dict()}")
+print(f"Taux de rachat           : {df_ml['Rachat'].mean()*100:.1f}%")
+print(f"\nValeurs manquantes       : {df_ml.isnull().sum().sum()}")
+print(f"\nColonnes finales :\n{list(df_ml.columns)}")
+
+# ============================================================
+# STATISTIQUES DESCRIPTIVES PAR GROUPE
+# ============================================================
+
+print("\n=== Moyennes par groupe (Rachat 0 vs 1) ===")
+print(df_ml.groupby('Rachat')[vars_sel].mean().round(3).T.to_string())
+
+# ============================================================
+# EXPORT
+# ============================================================
+
+# Dataset ML complet (avec ID_Police pour tra├ºabilit├®)
+df_ml.to_csv('dataset_ml_final.csv', index=False)
+print("\nFichier sauvegard├® : dataset_ml_final.csv")
+
+# Dataset sans ID pour mod├®lisation directe
+df_ml.drop(columns=['ID_Police']).to_csv('dataset_ml_modelisation.csv', index=False)
+print("Fichier sauvegard├® : dataset_ml_modelisation.csv")
+
+print("\n" + "="*55)
+print("DATASET ML PR├èT ÔÇö Prochaine ├®tape : mod├®lisation")
+print("="*55)
+print(f"  Observations : {len(df_ml):,}")
+print(f"  Features     : {len(vars_sel)}")
+print(f"  Target       : Rachat (0 = PM, 1 = Rachat)")
+
+=== CELL 4 ===
+# ============================================================
+# CELLULE 5 : ENTRA├ÄNEMENT ET COMPARAISON DES 3 MOD├êLES
+# Logistic Regression / Random Forest / XGBoost
+# ============================================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import (
+    roc_auc_score, f1_score, accuracy_score, precision_score,
+    recall_score, confusion_matrix, roc_curve, classification_report
+)
+from xgboost import XGBClassifier
+import warnings
+warnings.filterwarnings('ignore')
+
+# ============================================================
+# CHARGEMENT DU DATASET ML
+# ============================================================
+
+df = pd.read_csv('dataset_ml_modelisation.csv')
+
+X = df.drop(columns=['Rachat'])
+y = df['Rachat']
+
+print(f"Dataset : {X.shape[0]:,} observations | {X.shape[1]} features")
+print(f"Taux de rachat : {y.mean()*100:.1f}%")
+
+# ============================================================
+# SPLIT TRAIN / TEST ÔÇö stratifi├® pour respecter l'├®quilibre
+# ============================================================
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+
+print(f"\nTrain : {len(X_train):,} | Test : {len(X_test):,}")
+print(f"Taux rachat train : {y_train.mean()*100:.1f}% | test : {y_test.mean()*100:.1f}%")
+
+# ============================================================
+# NORMALISATION (n├®cessaire pour la R├®gression Logistique)
+# ============================================================
+
+scaler = StandardScaler()
+X_train_sc = scaler.fit_transform(X_train)
+X_test_sc  = scaler.transform(X_test)
+
+# ============================================================
+# D├ëFINITION DES MOD├êLES
+# ============================================================
+
+ratio_classes = (y == 0).sum() / (y == 1).sum()
+
+modeles = {
+    'R├®gression Logistique': LogisticRegression(
+        max_iter=1000,
+        class_weight='balanced',
+        random_state=42
+    ),
+    'Random Forest': RandomForestClassifier(
+        n_estimators=300,
+        max_depth=12,
+        min_samples_leaf=10,
+        class_weight='balanced',
+        random_state=42,
+        n_jobs=-1
+    ),
+    'XGBoost': XGBClassifier(
+        n_estimators=300,
+        max_depth=6,
+        learning_rate=0.05,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        scale_pos_weight=ratio_classes,
+        random_state=42,
+        eval_metric='logloss',
+        verbosity=0
+    ),
+}
+
+# ============================================================
+# ENTRA├ÄNEMENT + ├ëVALUATION
+# ============================================================
+
+resultats = {}
+cv = StratifiedKFold(n_splits=5, sh
+
+=== CELL 5 ===
+# ============================================================
+# CELLULE 6 : ANALYSE SHAP ÔÇö INTERPR├ëTABILIT├ë DU MEILLEUR MOD├êLE
+# ├Ç ex├®cuter apr├¿s la cellule 5
+# Choisit automatiquement le mod├¿le avec le meilleur AUC
+# ============================================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import shap
+import warnings
+warnings.filterwarnings('ignore')
+
+# ============================================================
+# S├ëLECTION AUTOMATIQUE DU MEILLEUR MOD├êLE
+# ============================================================
+
+# R├®cup├®rer le mod├¿le avec le meilleur AUC-ROC sur le test set
+meilleur_nom = max(resultats, key=lambda n: resultats[n]['auc'])
+meilleur     = resultats[meilleur_nom]['modele']
+
+print(f"Meilleur mod├¿le : {meilleur_nom}")
+print(f"AUC-ROC         : {resultats[meilleur_nom]['auc']:.4f}")
+
+# Donn├®es d'entra├«nement adapt├®es (normalis├®es si LR)
+if meilleur_nom == 'R├®gression Logistique':
+    Xtr_shap = pd.DataFrame(X_train_sc, columns=X_train.columns)
+    Xte_shap = pd.DataFrame(X_test_sc,  columns=X_test.columns)
+else:
+    Xtr_shap = X_train
+    Xte_shap = X_test
+
+# ============================================================
+# CALCUL DES VALEURS SHAP
+# ============================================================
+
+print("\nCalcul des valeurs SHAP (peut prendre 1-2 minutes)...")
+
+if meilleur_nom == 'XGBoost':
+    explainer   = shap.TreeExplainer(meilleur)
+    shap_values = explainer.shap_values(Xte_shap)
+elif meilleur_nom == 'Random Forest':
+    explainer   = shap.TreeExplainer(meilleur)
+    shap_values = explainer.shap_values(Xte_shap)
+    # RF retourne [shap_class0, shap_class1] ÔåÆ on prend classe 1
+    if isinstance(shap_values, list):
+        shap_values = shap_values[1]
+else:
+    # R├®gression Logistique ÔåÆ LinearExplainer
+    explainer   = shap.LinearExplainer(meilleur, Xtr_shap)
+    shap_values = explainer.shap_values(Xte_shap)
+
+print("Valeurs SHAP calcul├®es.")
+
+# ============================================================
+# VISUALISATION SHAP ÔÇö 4 graphiques
+# ============================================================
+
+fig = plt.figure(figsize=(20, 16))
+fig.patch.set_facecolor('#F8F9FA')
+
+# ------------------------------------------------------------------
+# GRAPHIQUE 1 : Importance globale SHAP (mean |SHAP|)
+# ------------------------------------------------------------------
+ax1 = fig.add_subplot(2, 2, 1)
+ax1.set_facecolor('#F8F9FA')
+
+shap_importance = pd.Series(
+    np.abs(shap_values).mean(axis=0),
+    index=Xte_shap.columns
+).sort_values(ascending=True)
+
+# Top 15
+top15 = shap_importance.tail(15)
+colors_imp = plt.cm.RdYlBu_r(np.linspace(0.2, 0.9, len(top15)))
+
+bars = ax1.barh(top15.index, top15.values, color=colors_imp, edgecolor='white')
+ax1.set_xlabel('Importance SHAP moyenne (|valeur SHAP|)', fontsize=10)
+ax1.set_title(f'Top 15 variables les plus importantes\n({meilleur_nom} ÔÇö SHAP)',
+              fontsize=12, fontweight='bold')
+ax1.spines[['top', 'right']].set_vi
+
+=== CELL 6 ===
+# ============================================================
+# CELLULE 7 : SCORING DES CONTRATS PM
+# Probabilit├® de rachat pour l'ann├®e prochaine et les suivantes
+# Mod├¿le : XGBoost (retenu ├á l'├®tape pr├®c├®dente)
+# ============================================================
+#
+# COMMENT LE SCORE EST ATTRIBU├ë :
+# ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# 1. On reprend le mod├¿le XGBoost entra├«n├® sur les contrats
+#    Rachat (>= 2015) + PM avec ├®missions.
+#
+# 2. Pour chaque contrat PM, on simule 3 horizons temporels
+#    en faisant vieillir le contrat :
+#    - Horizon N+1 : Anciennete + 1  (l'ann├®e prochaine)
+#    - Horizon N+2 : Anciennete + 2  (dans 2 ans)
+#    - Horizon N+3 : Anciennete + 3  (dans 3 ans)
+#
+# 3. Pour chaque horizon, XGBoost retourne predict_proba(),
+#    soit la probabilit├® que le contrat passe de PM ├á Rachat.
+#    C'est une valeur entre 0 et 1 (multipli├®e par 100 = %).
+#
+# 4. On ajoute un score de risque global = max des 3 horizons,
+#    et une cat├®gorie de risque : Faible / Mod├®r├® / ├ëlev├®.
+#
+# Seuils de cat├®gorisation :
+#    Faible   : proba < 30%
+#    Mod├®r├®   : 30% <= proba < 60%
+#    ├ëlev├®    : proba >= 60%
+# ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings('ignore')
+
+# ============================================================
+# ETAPE 1 : R├ëCUP├ëRER LE MOD├êLE ET LES FEATURES
+# (d├®pend de la cellule 5 ÔÇö m├¬me kernel)
+# ============================================================
+
+# R├®cup├®rer XGBoost depuis le dict resultats de la cellule 5
+modele_xgb = resultats['XGBoost']['modele']
+features   = list(X_train.columns)  # liste des features utilis├®es
+
+print(f"Mod├¿le XGBoost r├®cup├®r├®")
+print(f"Features attendues ({len(features)}) : {features}")
+
+# ============================================================
+# ETAPE 2 : PR├ëPARER LES DONN├ëES PM
+# M├¬me pipeline que cellule 2 (features_base) + cellule 1 (features_emissions)
+# ============================================================
+
+# --- Base ---
+bar = pd.read_csv('Base_annee_rachat.csv', sep=None, engine='python')
+bar.columns = bar.columns.str.strip().str.replace('\ufeff', '')
+bar['ID_Police'] = bar['ID_Police'].astype(str)
+
+ec = pd.read_csv('emission_annuelle_complete.csv', sep=None, engine='python')
+ec.columns = ec.columns.str.strip().str.replace('\ufeff', '')
+ec['ID_Police'] = ec['ID_Police'].astype(str)
+emit_ids = set(ec['ID_Police'])
+
+# Filtrer PM avec ├®missions uniquement
+pm = bar[(bar['Rachat'] == 0) & (bar['ID_Police'].isin(emit_ids))].copy()
+pm = pm.drop_duplicates(subset='ID_Police')
+pm_ids = set(pm['ID_Police'])
+
+print(f"\nContrats PM retenus : {len(pm):,}")
+
+# --- M├¬me nettoyage que cellule 2 ---
+cols_a_supprimer = [
+    'Date_Naissance', 'Debut', 'Fin', 'Annee_Effet',
+    'TMP_ANNUITY_TERM', 'Ville', 'Beneficiaires',
+    'ann├®e de rachat', 'Code_Postal'
+]
+pm = pm.drop(columns=[c for c in cols_a_supprimer if c in pm.col
+
