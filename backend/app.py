@@ -81,6 +81,15 @@ def create_app(config_name: str = None) -> Flask:
     def missing_token_callback(error):
         return jsonify({'error': 'Authentification requise'}), 401
 
+    # ── Gestionnaire d'erreurs global ────────────────────────────────
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        app.logger.error(f"ERREUR CRITIQUE: {str(e)}")
+        return jsonify({
+            "error": "Internal Server Error",
+            "message": str(e)
+        }), 500
+
     # ── Création des tables (Sécurisée pour le déploiement) ──────────
     try:
         with app.app_context():
@@ -89,9 +98,10 @@ def create_app(config_name: str = None) -> Flask:
             from .models.invitation import Invitation
             from .models.csv_upload import CsvUpload
             from .models.audit_log import AuditLog
-            db.create_all()
+            # db.create_all() # Désactivé pour éviter les timeouts en production
+            pass
     except Exception as e:
-        app.logger.error(f"Erreur lors de la création des tables au démarrage : {e}")
+        app.logger.error(f"Erreur au démarrage : {e}")
 
     return app
 
