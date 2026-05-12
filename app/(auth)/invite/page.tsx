@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
@@ -9,11 +9,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Spinner } from "@/components/ui/spinner"
-import { ShieldCheck, CheckCircle, AlertCircle, LogIn, ArrowRight } from "lucide-react"
+import { ShieldCheck, CheckCircle, AlertCircle, LogIn } from "lucide-react"
 
 type PageState = "loading" | "valid" | "invalid" | "not_logged_in" | "accepting" | "success" | "error"
 
-export default function InvitePage() {
+function InviteContent() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const { user, isLoading: authLoading, isAuthenticated } = useAuth()
@@ -96,11 +96,9 @@ export default function InvitePage() {
 
   return (
     <div className="min-h-screen bg-[#e0e1e1] flex items-center justify-center p-6">
-      {/* Background décoratif */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#093215] via-[#19542b] to-[#093215] opacity-10" />
 
       <div className="relative w-full max-w-lg">
-        {/* Logo */}
         <div className="flex justify-center mb-8">
           <div className="bg-white rounded-2xl p-4 shadow-xl">
             <Image
@@ -125,7 +123,6 @@ export default function InvitePage() {
           </CardHeader>
 
           <CardContent className="p-8">
-            {/* ── Loading ── */}
             {(pageState === "loading" || pageState === "accepting") && (
               <div className="text-center py-8">
                 <Spinner className="h-10 w-10 mx-auto mb-4 text-[#19542b]" />
@@ -135,7 +132,6 @@ export default function InvitePage() {
               </div>
             )}
 
-            {/* ── Invalid / Error ── */}
             {(pageState === "invalid" || pageState === "error") && (
               <div className="text-center py-6 space-y-4">
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
@@ -155,7 +151,6 @@ export default function InvitePage() {
               </div>
             )}
 
-            {/* ── Non connecté ── */}
             {pageState === "not_logged_in" && (
               <div className="text-center py-6 space-y-5">
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#acc936]/20">
@@ -181,7 +176,6 @@ export default function InvitePage() {
               </div>
             )}
 
-            {/* ── Invitation valide + connecté ── */}
             {pageState === "valid" && (
               <div className="space-y-6">
                 <div className="text-center">
@@ -222,7 +216,6 @@ export default function InvitePage() {
               </div>
             )}
 
-            {/* ── Succès ── */}
             {pageState === "success" && (
               <div className="text-center py-6 space-y-4">
                 <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#acc936]/20">
@@ -243,11 +236,22 @@ export default function InvitePage() {
           </CardContent>
         </Card>
 
-        {/* Footer */}
         <p className="text-center text-xs text-[#093215]/50 mt-6">
           © {new Date().getFullYear()} Assurances BIAT. Tous droits réservés.
         </p>
       </div>
     </div>
+  )
+}
+
+export default function InvitePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#e0e1e1] flex items-center justify-center p-6 text-center">
+        <Spinner className="h-10 w-10 mx-auto text-[#19542b]" />
+      </div>
+    }>
+      <InviteContent />
+    </Suspense>
   )
 }
