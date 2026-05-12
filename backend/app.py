@@ -81,11 +81,14 @@ def create_app(config_name: str = None) -> Flask:
     def missing_token_callback(error):
         return jsonify({'error': 'Authentification requise'}), 401
 
-    # ── Création des tables ──────────────────────────────────────────
-    with app.app_context():
-        # Importer tous les modèles pour que SQLAlchemy les enregistre
-        from models import User, Invitation, CsvUpload, AuditLog  # noqa
-        db.create_all()
+    # ── Création des tables (Sécurisée pour le déploiement) ──────────
+    try:
+        with app.app_context():
+            # Importer tous les modèles pour que SQLAlchemy les enregistre
+            from models import User, Invitation, CsvUpload, AuditLog  # noqa
+            db.create_all()
+    except Exception as e:
+        app.logger.error(f"Erreur lors de la création des tables au démarrage : {e}")
 
     return app
 
