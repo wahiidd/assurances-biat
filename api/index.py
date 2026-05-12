@@ -10,3 +10,7 @@ from backend.app import create_app
 
 # Point d'entrée pour Vercel
 app = create_app('production')
+
+@app.route('/api/ping')
+def ping():
+    return {"status": "pong", "message": "Flask is alive on Vercel"}
