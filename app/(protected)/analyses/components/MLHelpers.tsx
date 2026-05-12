@@ -7,7 +7,10 @@ import {
   PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from "recharts"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 
+  (typeof window !== "undefined" && window.location.hostname !== "localhost" 
+    ? "/api" 
+    : "http://localhost:5000/api")
 const TOKEN_KEY = "pfe_access_token"
 const COLORS_MODEL: Record<string, string> = {
   "Régression Logistique": "#e74c3c",
