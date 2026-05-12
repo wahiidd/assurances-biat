@@ -5,7 +5,7 @@
  * Aucune gestion d'état React ici — uniquement du fetch pur.
  */
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || (typeof window !== "undefined" ? "/api" : "http://localhost:5000/api")
 export const TOKEN_KEY         = "pfe_access_token"
 export const REFRESH_TOKEN_KEY = "pfe_refresh_token"
 
