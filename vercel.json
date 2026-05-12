@@ -1,24 +1,13 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python",
-      "config": { "maxDuration": 60 }
-    },
-    {
-      "src": "package.json",
-      "use": "@vercel/next"
-    }
-  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "api/index.py"
+      "destination": "/api"
     }
   ],
   "functions": {
-    "api/index.py": {
+    "api/*.py": {
       "memory": 1024,
       "maxDuration": 60
     }
