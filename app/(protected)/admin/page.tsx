@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { upload } from "@vercel/blob/client"
 import Image from "next/image"
 import { useAuth, authFetch, API_BASE_URL, type User } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
@@ -248,6 +249,9 @@ export default function AdminPage() {
     }
   }
 
+    }
+  }
+
   const handleCsvUpload = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!csvFile) return
@@ -258,48 +262,45 @@ export default function AdminPage() {
 
     try {
       const token = localStorage.getItem("pfe_access_token")
-      let payload: any = null
-      let isJson = false
+      let fileUrl = ""
 
-      // Si le fichier est gros (> 4 Mo), on utilise Vercel Blob
+      // Si le fichier est gros (> 4 Mo), on utilise l'upload DIRECT au client (Vercel Blob)
       if (csvFile.size > 4 * 1024 * 1024) {
-        setCsvSuccess("Téléchargement vers le stockage sécurisé (Vercel Blob) en cours...")
+        setCsvSuccess("Téléchargement direct vers Vercel Blob (20Mo+)...")
         
-        const uploadResponse = await fetch(`/api/upload?filename=${encodeURIComponent(csvFile.name)}`, {
-          method: "POST",
-          body: csvFile,
+        const newBlob = await upload(csvFile.name, csvFile, {
+          access: 'public',
+          handleUploadUrl: '/api/upload',
         })
 
-        if (!uploadResponse.ok) {
-          throw new Error("Échec de l'upload vers Vercel Blob")
-        }
+        fileUrl = newBlob.url
+        setCsvSuccess("Fichier stocké. Traitement final par BIAT...")
+      }
 
-        const blob = await uploadResponse.json()
-        payload = JSON.stringify({ file_url: blob.url })
-        isJson = true
-        setCsvSuccess("Fichier stocké. Traitement par le serveur BIAT...")
+      // On envoie l'URL ou le fichier au backend
+      const formData = new FormData()
+      let headers: Record<string, string> = { Authorization: `Bearer ${token}` }
+      let body: any = null
+
+      if (fileUrl) {
+        headers["Content-Type"] = "application/json"
+        body = JSON.stringify({ file_url: fileUrl })
       } else {
-        // Pour les petits fichiers, on garde l'upload direct (plus rapide)
-        const formData = new FormData()
         formData.append("file", csvFile)
-        payload = formData
+        body = formData
       }
 
       const res = await fetch(`${API_BASE_URL}/admin/csv/upload`, {
         method:  "POST",
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          ...(isJson ? { "Content-Type": "application/json" } : {})
-        },
-        body: payload,
+        headers,
+        body,
       })
       
       const data = await res.json()
 
       if (res.ok) {
-        setCsvSuccess(`Fichier traité : ${data.upload.nb_lignes?.toLocaleString("fr-FR")} lignes importées`)
+        setCsvSuccess(`Succès : ${data.upload.nb_lignes?.toLocaleString("fr-FR")} lignes importées`)
         setCsvFile(null)
-        // Réinitialiser l'input file
         const fileInput = document.getElementById("csv-file-input") as HTMLInputElement
         if (fileInput) fileInput.value = ""
         fetchUploads()
@@ -307,7 +308,7 @@ export default function AdminPage() {
         setCsvError(data.error || "Erreur lors du traitement")
       }
     } catch (err) {
-      setCsvError(err instanceof Error ? err.message : "Erreur de connexion au serveur")
+      setCsvError(err instanceof Error ? err.message : "Erreur de connexion")
     } finally {
       setCsvLoading(false)
     }

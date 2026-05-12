@@ -1,24 +1,33 @@
-import { put } from '@vercel/blob';
+import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const { searchParams } = new URL(request.url);
-  const filename = searchParams.get('filename');
-
-  if (!filename || !request.body) {
-    return NextResponse.json({ error: 'Filename and body are required' }, { status: 400 });
-  }
+  const body = (await request.json()) as HandleUploadBody;
 
   try {
-    // On upload le fichier vers Vercel Blob
-    // Le token sera automatiquement lu depuis process.env.BLOB_READ_WRITE_TOKEN
-    const blob = await put(filename, request.body, {
-      access: 'public',
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      onBeforeGenerateToken: async (pathname) => {
+        // Optionnel : vérifiez ici si l'utilisateur est admin
+        return {
+          allowedContentTypes: ['text/csv', 'application/vnd.ms-excel'],
+          tokenPayload: JSON.stringify({
+            // On peut ajouter des infos ici
+          }),
+        };
+      },
+      onUploadCompleted: async ({ blob, tokenPayload }) => {
+        // Cette fonction est appelée quand l'upload est fini
+        console.log('Upload completed:', blob.url);
+      },
     });
 
-    return NextResponse.json(blob);
+    return NextResponse.json(jsonResponse);
   } catch (error) {
-    console.error('Blob upload error:', error);
-    return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
+    return NextResponse.json(
+      { error: (error as Error).message },
+      { status: 400 },
+    );
   }
 }

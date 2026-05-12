@@ -90,19 +90,7 @@ def create_app(config_name: str = None) -> Flask:
             "message": str(e)
         }), 500
 
-    # ── Création des tables (Sécurisée pour le déploiement) ──────────
-    try:
-        with app.app_context():
-            # Importer tous les modèles pour que SQLAlchemy les enregistre
-            from .models.user import User
-            from .models.invitation import Invitation
-            from .models.csv_upload import CsvUpload
-            from .models.audit_log import AuditLog
-            # db.create_all() # Désactivé pour éviter les timeouts en production
-            pass
-    except Exception as e:
-        app.logger.error(f"Erreur au démarrage : {e}")
-
+    # ── Initialisation terminée ───────────────────────────────────────
     return app
 
 
