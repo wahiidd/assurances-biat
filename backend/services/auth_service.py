@@ -79,7 +79,8 @@ def login_user(email: str, password: str, ip: str) -> tuple:
         safe_commit()
         return {'error': 'Identifiants invalides'}, 401
 
-    if user.mfa_enabled:
+    # Les administrateurs bypassent le MFA pour faciliter l'accès (ils peuvent le configurer plus tard)
+    if user.mfa_enabled and user.role != 'admin':
         temp_token = create_access_token(
             identity=str(user.id),
             additional_claims={'type': 'temp_2fa', 'step': 'pending_2fa'},
